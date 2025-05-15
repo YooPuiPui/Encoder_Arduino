@@ -1,93 +1,91 @@
-// pines
+// Pines del encoder
 const int pin1 = 2;
 const int pin2 = 3;
 
-volatile long Posicion = 0; // la posicion actual
-volatile long PulsosTotales = 0; // el total de pulsos
+volatile long Posicion = 0;        // Posición actual
+volatile long PulsosTotales = 0;   // Total de pulsos
 
 const float pi = 3.1416;
-const float R = 3.25;
-const int N = 4360;
+const float R = 3.25;              // Radio de la rueda en cm
+const int N = 4360;                // Pulsos por vuelta
 
 float distancia_total = 0;
 
 bool midiendo = false;
 unsigned long ultimaActividad = 0;
-const unsigned long tiempoInactividad = 2000; // 2 segundos
+const unsigned long tiempoInactividad = 2000;  // 2 segundos sin pulsos
 
-long lastPos = 0; // para comparar cambios de posicion
+long ultimosPulsos = 0;
 
-void setup(){
-    pinMode(pin1, INPUT_PULLUP);
-    pinMode(pin2, INPUT_PULLUP);
+void setup() {
+  pinMode(pin1, INPUT_PULLUP);
+  pinMode(pin2, INPUT_PULLUP);
 
-    Serial.begin(9600);
+  Serial.begin(9600);
 
-    Serial.println("Asegurate de que el encoder este en el punto cero\n");
-    Serial.println("Presiona ENTER para iniciar la medicion.");
+  Serial.println("===================================");
+  Serial.println("ADVERTENCIA: Coloque el encoder en el punto cero.");
+  Serial.println("Presione ENTER para iniciar la medición...");
+  Serial.println("===================================");
 
-    Posicion = 0;
-    PulsosTotales = 0;
-
-    while(true){
-        if(Serial.available()){
-            char c = Serial.read();
-            if(c == '\n' || c == '\r') {
-                midiendo = true;
-                ultimaActividad = millis();
-                Serial.println("Iniciando medicion...");
-                attachInterrupt(digitalPinToInterrupt(pin1), encoderISR, CHANGE);
-                break;
-            }
-        }
+  while (true) {
+    if (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\n' || c == '\r') {
+        Serial.println("\nIniciando medición...");
+        midiendo = true;
+        ultimaActividad = millis();
+        attachInterrupt(digitalPinToInterrupt(pin1), encoderISR, CHANGE);
+        break;
+      }
     }
+  }
 }
 
-void loop(){
-    if(midiendo) {
-        if(Posicion != lastPos){
-            lastPos = Posicion;
-            ultimaActividad = millis();
-
-            /*
-            // Mostrar info en tiempo real
-            float parcial = ((2 * pi * R) / N) * PulsosTotales;
-            Serial.print("Pulsos: ");
-            Serial.print(PulsosTotales);
-            Serial.print(" | Distancia parcial: ");
-            Serial.println(parcial, 2);
-            */
-        }
-
-        if(millis() - ultimaActividad > tiempoInactividad){
-            midiendo = false;
-            detachInterrupt(digitalPinToInterrupt(pin1));
-
-            distancia_total = ((2 * pi * R) / N) * PulsosTotales;
-            distancia_total -= 1.0; // compensar bloque
-            if (distancia_total < 0) distancia_total = 0;
-
-            Serial.println("\n--- MEDICION FINALIZADA ---");
-            Serial.print("Distancia total recorrida: ");
-            Serial.print(distancia_total, 2);
-            Serial.println(" cm");
-        }
+void loop() {
+  if (midiendo) {
+    // Si hubo nuevo pulso, actualizamos el tiempo de última actividad
+    if (PulsosTotales != ultimosPulsos) {
+      ultimaActividad = millis();
+      ultimosPulsos = PulsosTotales;
     }
+
+    // Verificar si pasaron 2 segundos sin pulsos nuevos
+    if (millis() - ultimaActividad > tiempoInactividad) {
+      midiendo = false;
+      detachInterrupt(digitalPinToInterrupt(pin1));
+
+      distancia_total = ((2 * pi * R) / N) * PulsosTotales;
+
+      // Corrección por bloque (si es necesario)
+      distancia_total -= 1.0;
+      if (distancia_total < 0) distancia_total = 0;
+
+      Serial.println("\n--- MEDICIÓN FINALIZADA ---");
+      //Serial.print("Pulsos registrados: ");
+      //Serial.println(PulsosTotales);
+      Serial.print("Distancia total recorrida: ");
+      Serial.print(distancia_total, 2);
+      Serial.println(" cm");
+    }
+  }
 }
 
+void encoderISR() {
+  static unsigned long lastTime = 0;
+  unsigned long now = micros();
 
-void encoderISR(){
-    static unsigned long lastTime = 0;
-    unsigned long now = micros(); 
+  if (now - lastTime > 1000) {
+    bool A = digitalRead(pin1);
+    bool B = digitalRead(pin2);
 
-    if(now - lastTime > 1000){
-        bool A = digitalRead(pin1);
-        bool B = digitalRead(pin2);
+    PulsosTotales++;
 
-        PulsosTotales++;
-        if(A == B) Posicion++;
-        else Posicion--;
+    if (A == B)
+      Posicion++;
+    else
+      Posicion--;
 
-        lastTime = now;
-    }
+    lastTime = now;
+  }
 }
